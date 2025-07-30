@@ -6,6 +6,19 @@ Fork this repository in to your own GitHub account. Once the repository has been
 
 When the new Codespace launches a script will setup the environment and automatically run `minikube start` to launch a Kubernetes (K8s) cluster. As long as minikube starts without any issues it can now be used to install apps and get familiar with how Argo CD deploys and manages applications. 
 
+### Helpful Commands
+
+```bash
+# Watch pods in real-time
+kubectl get pods -n argocd -w
+
+# Check pod details if something goes wrong
+kubectl describe pod <pod-name> -n argocd
+
+# View application logs
+kubectl logs -f deployment/flask-demo -n argocd
+```
+
 ## Install Argo CD
 
 The first steps we will take are to create a namespace in K8s named argocd and then install Argo CD into that namespace. This can be accomplished by pasting the following commands in to the terminal window in VS Code.
@@ -44,6 +57,8 @@ argocd-server-7bbfdb874-s5h4l                       1/1     Running   0         
 `kubectl port-forward svc/argocd-server -n argocd 8002:80`
 
 The Argo CD UI will now be available at [https://127.0.0.1:8002](https://127.0.0.1:8002)
+
+**Note:** The `port-forward` command will run continuously and occupy the terminal. A new terminal tab (Terminal → New Terminal) will need to be opened to continue the tutorial. 
 
 ### Get admin password
 
@@ -93,6 +108,72 @@ Once the application has synced fully in Argo CD port-forwarding can be run to e
 
 After running that access the Web UI by browsing to [http://127.0.0.1:8001/](http://127.0.0.1:8001/)
 
+### Real time changes
+
+Argo CD looks to the repository every ~3 minutes to see if any changes have been made. If you don't want to wait for the automated sync you can always use the Sync button at the top to Sync manually. 
+
+#### Scaling: Replicas from 1 to 3
+Let's scale from 1 to 3 running pods:
+
+1. Navigate to the `flask-helm/values.yaml` file in your codespace
+2. Change `replicaCount: 1` to `replicaCount: 3`
+3. Commit your changes:
+   - Click the Source Control icon (should show a green circle with "1")
+   - Add a commit message like "Scale to 3 replicas"
+   - Click **Commit** and accept the prompts to stage and push changes
+
+When we go back to the Argo CD UI we will see a sync within 3 minutes to match the new repository state. The sync will show a comment that matches the commit message used in our change. When the sync finishes we should see 3 running pods. The page may need to be refreshed if this is not shown. 
+
+We can also run `kubectl get pods -n argocd` to see the 3 new running flask pods. 
+
+#### Update Environment Variable
+
+The Flask app displays a welcome banner using an environment variable. Let's customize it:
+
+1. In `flask-helm/values.yaml`, find: `welcomeMessage: "Welcome to the Flask Demo!"`
+2. Change it to your own message
+3. Commit and push the changes
+4. Wait for Argo CD to sync (or manually sync)
+
+**Note:** This update will restart the pods, terminating your Flask port-forward. You'll need to restart the port-forward command to see your changes.
+
+#### Bad image tag
+
+Let's see what happens when we make a mistake:
+
+1. In `values.yaml`, change the image tag from `"2025-06-24.16.33"` to `"bad-tag"`
+2. Commit and push this "mistake"
+3. **Observe what happens:**
+   - Argo CD creates a new ReplicaSet
+   - New pods fail with `ImagePullErr`
+   - **Important:** Your original pods keep running! The site stays up.
+   - Argo CD shows the application as "Degraded" but not completely failed
+
+4. **Recovery:** Revert the image tag to the working version and push again
+
+This style of GitOps is resilient! Bad deployments don't necessarily take down running services.
+
 ## Conclusion
 
-This tutorial provides a brief introduction in to how the CIRRUS cluster is setup with Argo CD, how applications are added to Argo CD, and how development work on Kubernetes via CI/CD can be handled. 
+This tutorial provides a brief introduction into how the CIRRUS cluster is setup with Argo CD, how applications are added to Argo CD, and how development work on Kubernetes via CI/CD can be handled. 
+
+## Quick Reference Commands
+```bash
+# Install Argo CD
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -f argocd-insecure-install.yaml
+kubectl rollout restart deployment argocd-server -n argocd
+
+# Watch all pods
+kubectl get pods -n argocd -w
+
+# Get admin password  
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
+
+# Port forward Argo CD
+kubectl port-forward svc/argocd-server -n argocd 8002:80
+
+# Port forward Flask app
+kubectl port-forward svc/flask-demo -n argocd 8001:5000
+```
